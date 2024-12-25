@@ -9,7 +9,7 @@ import trimesh
 import cv2
 import torch.nn.functional as F
 
-from .render_openpose import render_openpose
+from .render_openpose import render_openpose, render_hand_keypoints
 
 def create_raymond_lights():
     import pyrender
@@ -78,16 +78,24 @@ class MeshRenderer:
             rend_img = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=False), (2,0,1))).float()
             rend_img_side = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=True), (2,0,1))).float()
             body_keypoints = pred_keypoints[i, :25]
-            extra_keypoints = pred_keypoints[i, -19:]
+            extra_keypoints = pred_keypoints[i, 25:44]
+            left_hand_keypoints = pred_keypoints[i, 44:65]
+            right_hand_keypoints = pred_keypoints[i, 65:86]
             for pair in keypoint_matches:
                 body_keypoints[pair[0], :] = extra_keypoints[pair[1], :]
             pred_keypoints_img = render_openpose(255 * images_np[i].copy(), body_keypoints) / 255
+            pred_keypoints_img = render_hand_keypoints(255 * pred_keypoints_img, left_hand_keypoints) / 255
+            pred_keypoints_img = render_hand_keypoints(255 * pred_keypoints_img, right_hand_keypoints) / 255
             body_keypoints = gt_keypoints[i, :25]
-            extra_keypoints = gt_keypoints[i, -19:]
+            extra_keypoints = gt_keypoints[i, 25:44]
+            left_hand_keypoints = gt_keypoints[i, 44:65]
+            right_hand_keypoints = gt_keypoints[i, 65:86]
             for pair in keypoint_matches:
                 if extra_keypoints[pair[1], -1] > 0 and body_keypoints[pair[0], -1] == 0:
                     body_keypoints[pair[0], :] = extra_keypoints[pair[1], :]
             gt_keypoints_img = render_openpose(255*images_np[i].copy(), body_keypoints) / 255
+            gt_keypoints_img = render_hand_keypoints(255 * gt_keypoints_img, left_hand_keypoints) / 255
+            gt_keypoints_img = render_hand_keypoints(255 * gt_keypoints_img, right_hand_keypoints) / 255            
             rend_imgs.append(torch.from_numpy(images[i]))
             rend_imgs.append(rend_img)
             rend_imgs.append(rend_img_side)

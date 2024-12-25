@@ -56,6 +56,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     # Setup model
     model = HMR2(cfg)
 
+    # print("freezing backbone!")
+    # for param in model.backbone.parameters():
+    #     param.requires_grad = False
+
+    # for name, param in model.named_parameters():
+    #     print(f"{name}: requires_grad={param.requires_grad}")
+        
     # Setup Tensorboard logger
     logger = TensorBoardLogger(os.path.join(cfg.paths.output_dir, 'tensorboard'), name='', version='', default_hp_metric=False)
     loggers = [logger]

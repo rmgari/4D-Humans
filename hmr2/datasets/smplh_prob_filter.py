@@ -127,7 +127,7 @@ def poses_to_joint_probs(poses: torch.Tensor, amass_poses_100_smooth: torch.Tens
     # amass_poses_100_smooth: 21xBINSxBINSxBINS
     # returns: poses_prob: Nx21
     N=poses.shape[0]
-    assert poses.shape == (N,69)
+    # assert poses.shape == (N,69)
     poses = poses[:,:63].reshape(N*21,3)
 
     nbins = amass_poses_100_smooth.shape[1]

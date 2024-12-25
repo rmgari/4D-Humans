@@ -12,6 +12,7 @@ from .heads import build_smpl_head
 from .discriminator import Discriminator
 from .losses import Keypoint3DLoss, Keypoint2DLoss, ParameterLoss
 from . import SMPL
+import ipdb
 
 log = get_pylogger(__name__)
 
@@ -31,9 +32,17 @@ class HMR2(pl.LightningModule):
         self.cfg = cfg
         # Create backbone feature extractor
         self.backbone = create_backbone(cfg)
+
+        pretrained_dict = torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')['state_dict']
+        pretrained_dict = {k.replace("backbone.", ""): v for k, v in pretrained_dict.items()}
+
+        for key in list(pretrained_dict.keys()):
+            if 'keypoint_head' in key:
+                del pretrained_dict[key]
+
         if cfg.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None):
             log.info(f'Loading backbone weights from {cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS}')
-            self.backbone.load_state_dict(torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')['state_dict'])
+            self.backbone.load_state_dict(pretrained_dict)
 
         # Create SMPL head
         self.smpl_head = build_smpl_head(cfg)
@@ -48,7 +57,7 @@ class HMR2(pl.LightningModule):
         self.smpl_parameter_loss = ParameterLoss()
 
         # Instantiate SMPL model
-        smpl_cfg = {k.lower(): v for k,v in dict(cfg.SMPL).items()}
+        smpl_cfg = {k.lower(): v for k,v in dict(cfg.SMPLH).items()}
         self.smpl = SMPL(**smpl_cfg)
 
         # Buffer that shows whetheer we need to initialize ActNorm layers
@@ -125,18 +134,31 @@ class HMR2(pl.LightningModule):
         pred_smpl_params['global_orient'] = pred_smpl_params['global_orient'].reshape(batch_size, -1, 3, 3)
         pred_smpl_params['body_pose'] = pred_smpl_params['body_pose'].reshape(batch_size, -1, 3, 3)
         pred_smpl_params['betas'] = pred_smpl_params['betas'].reshape(batch_size, -1)
+        pred_smpl_params['right_hand_pose'] = pred_smpl_params['right_hand_pose'].reshape(batch_size, -1, 3, 3)
+        pred_smpl_params['left_hand_pose'] = pred_smpl_params['left_hand_pose'].reshape(batch_size, -1, 3, 3)
+        # if 'pred_smpl_params' in batch and 'right_hand_pose' in batch['pred_smpl_params']:
+        #     pred_smpl_params['right_hand_pose'] = batch['pred_smpl_params']['right_hand_pose'].reshape(batch_size, -1, 3, 3)  
+        # if 'pred_smpl_params' in batch and 'left_hand_pose' in batch['pred_smpl_params']:
+        #     pred_smpl_params['left_hand_pose'] = batch['pred_smpl_params']['left_hand_pose'].reshape(batch_size, -1, 3, 3)                  
         smpl_output = self.smpl(**{k: v.float() for k,v in pred_smpl_params.items()}, pose2rot=False)
         pred_keypoints_3d = smpl_output.joints
         pred_vertices = smpl_output.vertices
-        output['pred_keypoints_3d'] = pred_keypoints_3d.reshape(batch_size, -1, 3)
+        output['pred_keypoints_3d'] = pred_keypoints_3d[:, :44, :].reshape(batch_size, -1, 3)
         output['pred_vertices'] = pred_vertices.reshape(batch_size, -1, 3)
         pred_cam_t = pred_cam_t.reshape(-1, 3)
         focal_length = focal_length.reshape(-1, 2)
         pred_keypoints_2d = perspective_projection(pred_keypoints_3d,
                                                    translation=pred_cam_t,
                                                    focal_length=focal_length / self.cfg.MODEL.IMAGE_SIZE)
+        # body is first 44
+        output['pred_keypoints_2d'] = pred_keypoints_2d[:, :44, :].reshape(batch_size, -1, 2)
 
-        output['pred_keypoints_2d'] = pred_keypoints_2d.reshape(batch_size, -1, 2)
+        # left hand is next 21
+        output['pred_keypoints_2d_left_hand'] = pred_keypoints_2d[:, 44:65, :].reshape(batch_size, -1, 2)
+
+        # right hand is last 21
+        output['pred_keypoints_2d_right_hand'] = pred_keypoints_2d[:, 65:, :].reshape(batch_size, -1, 2)
+
         return output
 
     def compute_loss(self, batch: Dict, output: Dict, train: bool = True) -> torch.Tensor:
@@ -152,8 +174,9 @@ class HMR2(pl.LightningModule):
 
         pred_smpl_params = output['pred_smpl_params']
         pred_keypoints_2d = output['pred_keypoints_2d']
+        pred_keypoints_2d_left_hand = output['pred_keypoints_2d_left_hand']
+        pred_keypoints_2d_right_hand = output['pred_keypoints_2d_right_hand']
         pred_keypoints_3d = output['pred_keypoints_3d']
-
 
         batch_size = pred_smpl_params['body_pose'].shape[0]
         device = pred_smpl_params['body_pose'].device
@@ -161,13 +184,17 @@ class HMR2(pl.LightningModule):
 
         # Get annotations
         gt_keypoints_2d = batch['keypoints_2d']
+        gt_keypoints_2d_left_hand = batch['keypoints_2d_left_hand']
+        gt_keypoints_2d_right_hand = batch['keypoints_2d_right_hand']
         gt_keypoints_3d = batch['keypoints_3d']
-        gt_smpl_params = batch['smpl_params']
-        has_smpl_params = batch['has_smpl_params']
-        is_axis_angle = batch['smpl_params_is_axis_angle']
+        gt_smpl_params = batch['smplh_params']
+        has_smpl_params = batch['has_smplh_params']
+        is_axis_angle = batch['smplh_params_is_axis_angle']
 
         # Compute 3D keypoint loss
         loss_keypoints_2d = self.keypoint_2d_loss(pred_keypoints_2d, gt_keypoints_2d)
+        loss_keypoints_2d_left_hand = self.keypoint_2d_loss(pred_keypoints_2d_left_hand, gt_keypoints_2d_left_hand)
+        loss_keypoints_2d_right_hand = self.keypoint_2d_loss(pred_keypoints_2d_right_hand, gt_keypoints_2d_right_hand)
         loss_keypoints_3d = self.keypoint_3d_loss(pred_keypoints_3d, gt_keypoints_3d, pelvis_id=25+14)
 
         # Compute loss on SMPL parameters
@@ -177,14 +204,20 @@ class HMR2(pl.LightningModule):
             if is_axis_angle[k].all():
                 gt = aa_to_rotmat(gt.reshape(-1, 3)).view(batch_size, -1, 3, 3)
             has_gt = has_smpl_params[k]
+            if gt.shape[1] == 23:
+                gt = gt[:, :21, :, :]
             loss_smpl_params[k] = self.smpl_parameter_loss(pred.reshape(batch_size, -1), gt.reshape(batch_size, -1), has_gt)
 
         loss = self.cfg.LOSS_WEIGHTS['KEYPOINTS_3D'] * loss_keypoints_3d+\
                self.cfg.LOSS_WEIGHTS['KEYPOINTS_2D'] * loss_keypoints_2d+\
+               self.cfg.LOSS_WEIGHTS['KEYPOINTS_2D_LEFT_HAND'] * loss_keypoints_2d_left_hand+\
+               self.cfg.LOSS_WEIGHTS['KEYPOINTS_2D_RIGHT_HAND'] * loss_keypoints_2d_right_hand+\
                sum([loss_smpl_params[k] * self.cfg.LOSS_WEIGHTS[k.upper()] for k in loss_smpl_params])
 
         losses = dict(loss=loss.detach(),
                       loss_keypoints_2d=loss_keypoints_2d.detach(),
+                      loss_keypoints_2d_left_hand=loss_keypoints_2d_left_hand.detach(),
+                      loss_keypoints_2d_right_hand=loss_keypoints_2d_right_hand.detach(),
                       loss_keypoints_3d=loss_keypoints_3d.detach())
 
         for k, v in loss_smpl_params.items():
@@ -205,7 +238,6 @@ class HMR2(pl.LightningModule):
             step_count (int): Global training step count
             train (bool): Flag indicating whether it is training or validation mode
         """
-
         mode = 'train' if train else 'val'
         batch_size = batch['keypoints_2d'].shape[0]
         images = batch['img']
@@ -217,10 +249,18 @@ class HMR2(pl.LightningModule):
         pred_vertices = output['pred_vertices'].detach().reshape(batch_size, -1, 3)
         focal_length = output['focal_length'].detach().reshape(batch_size, 2)
         gt_keypoints_3d = batch['keypoints_3d']
-        gt_keypoints_2d = batch['keypoints_2d']
+        gt_keypoints_2d = torch.cat([
+            batch['keypoints_2d'],
+            batch['keypoints_2d_left_hand'],
+            batch['keypoints_2d_right_hand']
+        ], dim=1)                
         losses = output['losses']
         pred_cam_t = output['pred_cam_t'].detach().reshape(batch_size, 3)
-        pred_keypoints_2d = output['pred_keypoints_2d'].detach().reshape(batch_size, -1, 2)
+        pred_keypoints_2d = torch.cat([
+            output['pred_keypoints_2d'].detach(),
+            output['pred_keypoints_2d_left_hand'].detach(),
+            output['pred_keypoints_2d_right_hand'].detach()
+        ], dim=1).reshape(batch_size, -1, 2)
 
         if write_to_summary_writer:
             summary_writer = self.logger.experiment
@@ -231,12 +271,25 @@ class HMR2(pl.LightningModule):
         gt_keypoints_3d = batch['keypoints_3d']
         pred_keypoints_3d = output['pred_keypoints_3d'].detach().reshape(batch_size, -1, 3)
 
+        smplh_params = {}
+        smplh_params['global_orient'] = aa_to_rotmat(batch['smplh_params']['global_orient']).clone().float()
+        smplh_params['body_pose'] =  aa_to_rotmat(batch['smplh_params']['body_pose'].reshape(-1, 3)).reshape(batch_size, -1, 3, 3).clone().float()
+        smplh_params['betas'] = batch['smplh_params']['betas'].clone().float()
+
+        smplh_params['right_hand_pose'] = aa_to_rotmat(batch['smplh_params']['right_hand_pose'].reshape(-1, 3)).reshape(batch_size, -1, 3, 3).clone().float()
+        smplh_params['left_hand_pose'] = aa_to_rotmat(batch['smplh_params']['left_hand_pose'].reshape(-1, 3)).reshape(batch_size, -1, 3, 3).clone().float()
+
+        
+        smplh_output = self.smpl(**{k: v for k,v in smplh_params.items()}, pose2rot=False)
+        gt_verts = smplh_output.vertices.detach().squeeze().cpu().numpy()
+
         # We render the skeletons instead of the full mesh because rendering a lot of meshes will make the training slow.
-        #predictions = self.renderer(pred_keypoints_3d[:num_images],
+        # predictions = self.renderer(pred_keypoints_3d[:num_images],
         #                            gt_keypoints_3d[:num_images],
         #                            2 * gt_keypoints_2d[:num_images],
         #                            images=images[:num_images],
         #                            camera_translation=pred_cam_t[:num_images])
+        # gt_verts[:num_images], pred_vertices[:num_images].cpu().numpy()
         predictions = self.mesh_renderer.visualize_tensorboard(pred_vertices[:num_images].cpu().numpy(),
                                                                pred_cam_t[:num_images].cpu().numpy(),
                                                                images[:num_images].cpu().numpy(),

@@ -146,3 +146,16 @@ dmypy.json
 .pyre/
 /checkpoints/
 /data/
+
+first_vanilla_run_out
+frozen_backbone_out
+smaller_backbone_out
+smplh_out
+third-party
+right_hands_test
+combined_4dhumans_hamer
+_DATA
+dataset_tars
+coco-train-2014-vitpose-pruned
+coco_process_out
+h36m-train

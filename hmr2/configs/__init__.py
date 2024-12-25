@@ -108,9 +108,9 @@ def get_config(config_file: str, merge: bool = True, update_cachedir: bool = Fal
           return path
         return os.path.join(CACHE_DIR_4DHUMANS, path)
 
-      cfg.SMPL.MODEL_PATH = update_path(cfg.SMPL.MODEL_PATH)
-      cfg.SMPL.JOINT_REGRESSOR_EXTRA = update_path(cfg.SMPL.JOINT_REGRESSOR_EXTRA)
-      cfg.SMPL.MEAN_PARAMS = update_path(cfg.SMPL.MEAN_PARAMS)
+      cfg.SMPLH.MODEL_PATH = update_path(cfg.SMPLH.MODEL_PATH)
+      cfg.SMPLH.JOINT_REGRESSOR_EXTRA = update_path(cfg.SMPLH.JOINT_REGRESSOR_EXTRA)
+      cfg.SMPLH.MEAN_PARAMS = update_path(cfg.SMPLH.MEAN_PARAMS)
 
     cfg.freeze()
     return cfg

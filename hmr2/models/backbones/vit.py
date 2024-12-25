@@ -10,6 +10,21 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import drop_path, to_2tuple, trunc_normal_
 
 def vit(cfg):
+    if cfg.MODEL.BACKBONE.VARIANT == 'B':
+        print("recognized base variant")
+        return ViT(
+                img_size=(256, 192),
+                patch_size=16,
+                embed_dim=768,
+                depth=12,
+                num_heads=12,
+                ratio=1,
+                use_checkpoint=False,
+                mlp_ratio=4,
+                qkv_bias=True,
+                # revert for consistency
+                drop_path_rate=0.55,
+            )        
     return ViT(
                 img_size=(256, 192),
                 patch_size=16,

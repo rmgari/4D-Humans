@@ -60,7 +60,6 @@ def render_keypoints(img: np.array,
     shift = 0
     numberColors = len(colors)
     thresholdRectangle = 0.1
-
     person_width, person_height, person_area = get_keypoints_rectangle(keypoints, thresholdRectangle)
     if person_area > 0:
         ratioAreas = min(1, max(person_width / width, person_height / height))
@@ -76,8 +75,8 @@ def render_keypoints(img: np.array,
                 thicknessLineScaled = int(round(min(thicknessLine[index1], thicknessLine[index2]) * pose_scales[0]))
                 colorIndex = index2
                 color = colors[colorIndex % numberColors]
-                keypoint1 = keypoints[index1, :-1].astype(np.int)
-                keypoint2 = keypoints[index2, :-1].astype(np.int)
+                keypoint1 = keypoints[index1, :-1].astype(np.int32)
+                keypoint2 = keypoints[index2, :-1].astype(np.int32)
                 cv2.line(img, tuple(keypoint1.tolist()), tuple(keypoint2.tolist()), tuple(color.tolist()), thicknessLineScaled, lineType, shift)
         for part in range(len(keypoints)):
             faceIndex = part
@@ -86,7 +85,7 @@ def render_keypoints(img: np.array,
                 thicknessCircleScaled = int(round(thicknessCircle[faceIndex] * pose_scales[0]))
                 colorIndex = part
                 color = colors[colorIndex % numberColors]
-                center = keypoints[faceIndex, :-1].astype(np.int)
+                center = keypoints[faceIndex, :-1].astype(np.int32)
                 cv2.circle(img, tuple(center.tolist()), radiusScaled, tuple(color.tolist()), thicknessCircleScaled, lineType, shift)
     return img
 
@@ -134,6 +133,46 @@ def render_body_keypoints(img: np.array,
     colors = np.array(colors).reshape(-1,3)
     pose_scales = [1]
     return render_keypoints(img, body_keypoints, pairs, colors, thickness_circle_ratio, thickness_line_ratio_wrt_circle, pose_scales, 0.1)
+
+def render_hand_keypoints(img, right_hand_keypoints, threshold=0.1, use_confidence=False, map_fn=lambda x: np.ones_like(x), alpha=1.0):
+    if use_confidence and map_fn is not None:
+        #thicknessCircleRatioLeft = 1./50 * map_fn(left_hand_keypoints[:, -1])
+        thicknessCircleRatioRight = 1./50 * map_fn(right_hand_keypoints[:, -1])
+    else:
+        #thicknessCircleRatioLeft = 1./50 * np.ones(left_hand_keypoints.shape[0])
+        thicknessCircleRatioRight = 1./50 * np.ones(right_hand_keypoints.shape[0])
+    thicknessLineRatioWRTCircle = 0.75
+    pairs = [0,1,  1,2,  2,3,  3,4,  0,5,  5,6,  6,7,  7,8,  0,9,  9,10,  10,11,  11,12,  0,13,  13,14,  14,15,  15,16,  0,17,  17,18,  18,19,  19,20]
+    pairs = np.array(pairs).reshape(-1,2)
+
+    colors = [100.,  100.,  100.,
+              100.,    0.,    0.,
+              150.,    0.,    0.,
+              200.,    0.,    0.,
+              255.,    0.,    0.,
+              100.,  100.,    0.,
+              150.,  150.,    0.,
+              200.,  200.,    0.,
+              255.,  255.,    0.,
+                0.,  100.,   50.,
+                0.,  150.,   75.,
+                0.,  200.,  100.,
+                0.,  255.,  125.,
+                0.,   50.,  100.,
+                0.,   75.,  150.,
+                0.,  100.,  200.,
+                0.,  125.,  255.,
+              100.,    0.,  100.,
+              150.,    0.,  150.,
+              200.,    0.,  200.,
+              255.,    0.,  255.]
+    colors = np.array(colors).reshape(-1,3)
+    #colors = np.zeros_like(colors)
+    poseScales = [1]
+    #img = render_keypoints(img, left_hand_keypoints, pairs, colors, thicknessCircleRatioLeft, thicknessLineRatioWRTCircle, poseScales, threshold, alpha=alpha)
+    img = render_keypoints(img, right_hand_keypoints, pairs, colors, thicknessCircleRatioRight, thicknessLineRatioWRTCircle, poseScales, threshold)
+    #img = render_keypoints(img, right_hand_keypoints, pairs, colors, thickness_circle_ratio, thickness_line_ratio_wrt_circle, pose_scales, 0.1)
+    return img    
 
 def render_openpose(img: np.array,
                     body_keypoints: np.array) -> np.array:

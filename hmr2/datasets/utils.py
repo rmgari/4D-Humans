@@ -10,6 +10,7 @@ import random
 import cv2
 from typing import List, Dict, Tuple
 from yacs.config import CfgNode
+import ipdb
 
 def expand_to_aspect_ratio(input_shape, target_aspect_ratio=None):
     """Increase the size of the bounding box to match the target shape."""
@@ -444,6 +445,99 @@ def fliplr_params(smpl_params: Dict, has_smpl_params: Dict) -> Tuple[Dict, Dict]
 
     return smpl_params, has_smpl_params
 
+def fliplr_params_smplh(smplh_params: Dict, has_smplh_params: Dict) -> Tuple[Dict, Dict]:
+    """
+    Flip SMPLH parameters when flipping the image.
+    Args:
+        smplh_params (Dict): SMPLH parameter annotations.
+        has_smplh_params (Dict): Whether SMPLH annotations are valid.
+    Returns:
+        Dict, Dict: Flipped SMPL parameters and valid flags.
+    """
+    global_orient = smplh_params['global_orient'].copy()
+    body_pose = smplh_params['body_pose'].copy()
+    right_hand_pose = smplh_params['right_hand_pose'].copy()
+    left_hand_pose = smplh_params['left_hand_pose'].copy()
+    betas = smplh_params['betas'].copy()
+    has_global_orient = has_smplh_params['global_orient'].copy()   
+    has_body_pose = has_smplh_params['body_pose'].copy()
+    has_right_hand_pose = has_smplh_params['right_hand_pose'].copy()
+    has_left_hand_pose = has_smplh_params['left_hand_pose'].copy()
+
+    has_betas = has_smplh_params['betas'].copy()
+
+    body_pose_permutation = [6, 7, 8, 3, 4, 5, 9, 10, 11, 15, 16, 17, 12, 13,
+                             14 ,18, 19, 20, 24, 25, 26, 21, 22, 23, 27, 28, 29, 33,
+                             34, 35, 30, 31, 32, 36, 37, 38, 42, 43, 44, 39, 40, 41,
+                             45, 46, 47, 51, 52, 53, 48, 49, 50, 57, 58, 59, 54, 55,
+                             56, 63, 64, 65, 60, 61, 62, 69, 70, 71, 66, 67, 68]
+    body_pose_permutation = body_pose_permutation[:len(body_pose)]
+    body_pose_permutation = [i-3 for i in body_pose_permutation]
+
+    body_pose = body_pose[body_pose_permutation]
+
+    global_orient[1::3] *= -1
+    global_orient[2::3] *= -1
+    body_pose[1::3] *= -1
+    body_pose[2::3] *= -1
+
+    # print(body_pose.shape)
+    # print(right_hand_pose.shape)
+    # print()
+
+
+    # Reassign and flip!
+    if has_right_hand_pose and has_left_hand_pose:
+        temp_left = left_hand_pose.copy()
+
+        right_hand_pose[1::3] *= -1
+        right_hand_pose[2::3] *= -1
+        left_hand_pose = right_hand_pose
+
+        temp_left[1::3] *= -1
+        temp_left[2::3] *= -1
+        right_hand_pose = temp_left
+    elif has_left_hand_pose:
+        left_hand_pose[1::3] *= -1
+        left_hand_pose[2::3] *= -1
+
+        right_hand_pose = left_hand_pose
+
+        # prevent future left hand pose referencing
+        has_left_hand_pose = np.array(0.0)
+        has_right_hand_pose = np.array(1.0)
+
+        
+        left_hand_pose = np.zeros(right_hand_pose.shape)
+
+    elif has_right_hand_pose:
+        right_hand_pose[1::3] *= -1
+        right_hand_pose[2::3] *= -1
+
+        left_hand_pose = right_hand_pose
+
+        # prevent future left hand pose referencing
+        has_left_hand_pose = np.array(1.0)
+        has_right_hand_pose = np.array(0.0)
+
+        right_hand_pose = np.zeros(left_hand_pose.shape)
+
+
+    smplh_params = {'global_orient': global_orient.astype(np.float32),
+                   'body_pose': body_pose.astype(np.float32),
+                   'right_hand_pose': right_hand_pose.astype(np.float32),
+                   'left_hand_pose': left_hand_pose.astype(np.float32),
+                   'betas': betas.astype(np.float32)
+                  }
+
+    has_smplh_params = {'global_orient': has_global_orient,
+                       'body_pose': has_body_pose,
+                       'right_hand_pose': has_right_hand_pose,
+                       'left_hand_pose': has_left_hand_pose,                      
+                       'betas': has_betas
+                      }
+
+    return smplh_params, has_smplh_params    
 
 def fliplr_keypoints(joints: np.array, width: float, flip_permutation: List[int]) -> np.array:
     """
@@ -522,12 +616,27 @@ def smpl_param_processing(smpl_params: Dict, has_smpl_params: Dict, rot: float, 
     smpl_params['global_orient'] = rot_aa(smpl_params['global_orient'], rot)
     return smpl_params, has_smpl_params
 
-
+def smplh_param_processing(smplh_params: Dict, has_smplh_params: Dict, rot: float, do_flip: bool) -> Tuple[Dict, Dict]:
+    """
+    Apply random augmentations to the SMPL parameters.
+    Args:
+        smpl_params (Dict): SMPL parameter annotations.
+        has_smpl_params (Dict): Whether SMPL annotations are valid.
+        rot (float): Random rotation applied to the keypoints.
+        do_flip (bool): Whether to flip keypoints or not.
+    Returns:
+        Dict, Dict: Transformed SMPL parameters and valid flags.
+    """
+    if do_flip:
+        smplh_params, has_smplh_params = fliplr_params_smplh(smplh_params, has_smplh_params)
+    smplh_params['global_orient'] = rot_aa(smplh_params['global_orient'], rot)
+    return smplh_params, has_smplh_params    
 
 def get_example(img_path: str|np.ndarray, center_x: float, center_y: float,
                 width: float, height: float,
-                keypoints_2d: np.array, keypoints_3d: np.array,
-                smpl_params: Dict, has_smpl_params: Dict,
+                keypoints_2d: np.array, keypoints_2d_right_hand: np.array, keypoints_2d_left_hand: np.array,
+                keypoints_3d: np.array,
+                smplh_params: Dict, has_smplh_params: Dict,
                 flip_kp_permutation: List[int],
                 patch_width: int, patch_height: int,
                 mean: np.array, std: np.array,
@@ -639,8 +748,7 @@ def get_example(img_path: str|np.ndarray, center_x: float, center_y: float,
     img_patch_cv = image.copy()
     img_patch = convert_cvimg_to_tensor(image)
 
-
-    smpl_params, has_smpl_params = smpl_param_processing(smpl_params, has_smpl_params, rot, do_flip)
+    smplh_params, has_smplh_params = smplh_param_processing(smplh_params, has_smplh_params, rot, do_flip)
 
     # apply normalization
     for n_c in range(min(img_channels, 3)):
@@ -649,16 +757,29 @@ def get_example(img_path: str|np.ndarray, center_x: float, center_y: float,
             img_patch[n_c, :, :] = (img_patch[n_c, :, :] - mean[n_c]) / std[n_c]
     if do_flip:
         keypoints_2d = fliplr_keypoints(keypoints_2d, img_width, flip_kp_permutation)
+        # flip hand keypoints
+        temp_right_hand_keyp = keypoints_2d_right_hand.copy()
+        keypoints_2d_right_hand = fliplr_keypoints(keypoints_2d_left_hand, img_width, np.arange(len(keypoints_2d_left_hand)))
+        keypoints_2d_left_hand = fliplr_keypoints(temp_right_hand_keyp, img_width, np.arange(len(temp_right_hand_keyp)))
 
 
     for n_jt in range(len(keypoints_2d)):
         keypoints_2d[n_jt, 0:2] = trans_point2d(keypoints_2d[n_jt, 0:2], trans)
     keypoints_2d[:, :-1] = keypoints_2d[:, :-1] / patch_width - 0.5
 
+    for n_jt in range(len(keypoints_2d_right_hand)):
+        keypoints_2d_right_hand[n_jt, 0:2] = trans_point2d(keypoints_2d_right_hand[n_jt, 0:2], trans)
+    keypoints_2d_right_hand[:, :-1] = keypoints_2d_right_hand[:, :-1] / patch_width - 0.5
+
+    for n_jt in range(len(keypoints_2d_left_hand)):
+        keypoints_2d_left_hand[n_jt, 0:2] = trans_point2d(keypoints_2d_left_hand[n_jt, 0:2], trans)
+    keypoints_2d_left_hand[:, :-1] = keypoints_2d_left_hand[:, :-1] / patch_width - 0.5     
+
     if not return_trans:
-        return img_patch, keypoints_2d, keypoints_3d, smpl_params, has_smpl_params, img_size
+        return img_patch, keypoints_2d, keypoints_2d_right_hand, keypoints_2d_left_hand, keypoints_3d, smplh_params, has_smplh_params, img_size
     else:
-        return img_patch, keypoints_2d, keypoints_3d, smpl_params, has_smpl_params, img_size, trans
+        return img_patch, keypoints_2d, keypoints_2d_right_hand, keypoints_2d_left_hand, keypoints_3d, smplh_params, has_smplh_params, img_size, trans
+
 
 def crop_to_hips(center_x: float, center_y: float, width: float, height: float, keypoints_2d: np.array) -> Tuple:
     """

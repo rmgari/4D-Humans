@@ -9,7 +9,7 @@ class Discriminator(nn.Module):
         """
         super(Discriminator, self).__init__()
 
-        self.num_joints = 23
+        self.num_joints = 21
         # poses_alone
         self.D_conv1 = nn.Conv2d(9, 32, kernel_size=1)
         nn.init.xavier_uniform_(self.D_conv1.weight)
@@ -63,6 +63,11 @@ class Discriminator(nn.Module):
         # poses B x 207
         #poses = poses.reshape(bn, -1)
         # poses B x num_joints x 1 x 9
+        if poses.shape[1] % self.num_joints != 0:
+            target = (poses.shape[1] //  self.num_joints) * self.num_joints
+            if len(poses.shape) == 4:
+                poses = poses[:, :target, :, :]
+        # print("pose", poses.shape)
         poses = poses.reshape(-1, self.num_joints, 1, 9)
         bn = poses.shape[0]
         # poses B x 9 x num_joints x 1

@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from yacs.config import CfgNode
 import braceexpand
 import cv2
+import ipdb
 
 from .dataset import Dataset
 from .utils import get_example, expand_to_aspect_ratio
@@ -52,6 +53,7 @@ class ImageDataset(Dataset):
                  train: bool = True,
                  prune: Dict[str, Any] = {},
                  **kwargs):
+        print("IN CONSTRUCTOR!")
         """
         Dataset class used for loading images and corresponding annotations.
         Args:
@@ -77,7 +79,7 @@ class ImageDataset(Dataset):
 
         self.flip_keypoint_permutation = copy.copy(FLIP_KEYPOINT_PERMUTATION)
 
-        num_pose = 3 * (self.cfg.SMPL.NUM_BODY_JOINTS + 1)
+        num_pose = 3 * (self.cfg.SMPLH.NUM_BODY_JOINTS + 1)
 
         # Bounding boxes are assumed to be in the center and scale format
         self.center = self.data['center']
@@ -99,6 +101,22 @@ class ImageDataset(Dataset):
         except KeyError:
             self.betas = np.zeros((len(self.imgname), 10), dtype=np.float32)
             self.has_betas = np.zeros(len(self.imgname), dtype=np.float32)
+
+        # try to get hand poses
+        try:
+            self.right_hand_pose = self.data['right_hand_pose'].astype(np.float32)
+            self.has_right_hand_pose = self.data['has_right_hand_pose'].astype(np.float32)
+        except KeyError:
+            # TODO: Change num_pose parameter for creation
+            self.right_hand_pose = np.zeros((len(self.imgname), 21), dtype=np.float32)
+            self.has_right_hand_pose = np.zeros(len(self.imgname), dtype=np.float32)
+        try:
+            self.left_hand_pose = self.data['left_hand_pose'].astype(np.float32)
+            self.has_left_hand_pose = self.data['has_left_hand_pose'].astype(np.float32)
+        except KeyError:
+            # TODO: Change num_pose parameter for creation
+            self.left_hand_pose = np.zeros((len(self.imgname), 21), dtype=np.float32)
+            self.has_left_hand_pose = np.zeros(len(self.imgname), dtype=np.float32)            
 
         # Try to get 2d keypoints, if available
         try:
@@ -135,6 +153,7 @@ class ImageDataset(Dataset):
         """
         Returns an example from the dataset.
         """
+        print("RUNNING!!!!")
         try:
             image_file_rel = self.imgname[idx].decode('utf-8')
         except AttributeError:
@@ -156,6 +175,12 @@ class ImageDataset(Dataset):
         has_body_pose = self.has_body_pose[idx].copy()
         has_betas = self.has_betas[idx].copy()
 
+        right_hand_pose = self.right_hand_pose[idx].copy().astype(np.float32)
+        left_hand_pose = self.left_hand_pose[idx].copy().astype(np.float32)
+
+        has_right_hand_pose = self.has_right_hand_pose[idx].copy()
+        has_left_hand_pose = self.has_left_hand_pose[idx].copy()               
+
         smpl_params = {'global_orient': body_pose[:3],
                        'body_pose': body_pose[3:],
                        'betas': betas
@@ -171,13 +196,34 @@ class ImageDataset(Dataset):
                                      'betas': False
                                     }
 
+        smplh_params = {'global_orient': body_pose[:3],
+                       'body_pose': body_pose[3:],
+                       'right_hand_pose': right_hand_pose,
+                       'left_hand_pose': left_hand_pose,
+                       'betas': betas
+                      }
+
+        has_smplh_params = {'global_orient': has_body_pose,
+                           'body_pose': has_body_pose,
+                           'right_hand_pose': has_right_hand_pose,
+                           'left_hand_pose': has_left_hand_pose,                           
+                           'betas': has_betas
+                           }
+
+        smplh_params_is_axis_angle = {'global_orient': True,
+                                     'body_pose': True,
+                                     'right_hand_pose': True,
+                                     'left_hand_pose': True,
+                                     'betas': False
+                                    }                                    
+
         augm_config = self.cfg.DATASETS.CONFIG
         # Crop image and (possibly) perform data augmentation
-        img_patch, keypoints_2d, keypoints_3d, smpl_params, has_smpl_params, img_size = get_example(image_file,
+        img_patch, keypoints_2d, keypoints_3d, smplh_params, has_smplh_params, img_size = get_example(image_file,
                                                                                                     center_x, center_y,
                                                                                                     bbox_size, bbox_size,
                                                                                                     keypoints_2d, keypoints_3d,
-                                                                                                    smpl_params, has_smpl_params,
+                                                                                                    smplh_params, has_smplh_params,
                                                                                                     self.flip_keypoint_permutation,
                                                                                                     self.img_size, self.img_size,
                                                                                                     self.mean, self.std, self.train, augm_config)
@@ -194,9 +240,12 @@ class ImageDataset(Dataset):
         item['box_size'] = bbox_size
         item['bbox_expand_factor'] = bbox_expand_factor
         item['img_size'] = 1.0 * img_size[::-1].copy()
-        item['smpl_params'] = smpl_params
-        item['has_smpl_params'] = has_smpl_params
-        item['smpl_params_is_axis_angle'] = smpl_params_is_axis_angle
+        # item['smpl_params'] = smpl_params
+        # item['has_smpl_params'] = has_smpl_params
+        # item['smpl_params_is_axis_angle'] = smpl_params_is_axis_angle
+        item['smplh_params'] = smplh_params
+        item['has_smplh_params'] = has_smplh_params
+        item['smplh_params_is_axis_angle'] = smplh_params_is_axis_angle        
         item['imgname'] = image_file
         item['imgname_rel'] = image_file_rel
         item['personid'] = int(self.personid[idx])
@@ -257,6 +306,7 @@ class ImageDataset(Dataset):
             bbox_size_min = item['data.pyd']['scale'].min().item() * 200.
             return bbox_size_min > thresh
 
+        # TODO
         def filter_no_poses(item):
             return (item['data.pyd']['has_body_pose'] > 0)
 
@@ -268,6 +318,7 @@ class ImageDataset(Dataset):
                     item['data.pyd']['has_betas'] = False
             return item
 
+        # TODO
         amass_poses_hist100_smooth = load_amass_hist_smooth()
         def supress_bad_poses(item):
             has_body_pose = item['data.pyd']['has_body_pose']
@@ -278,6 +329,7 @@ class ImageDataset(Dataset):
                     item['data.pyd']['has_body_pose'] = False
             return item
 
+        # TODO
         def poses_betas_simultaneous(item):
             # We either have both body_pose and betas, or neither
             has_betas = item['data.pyd']['has_betas']
@@ -312,7 +364,6 @@ class ImageDataset(Dataset):
 
         # Process the dataset
         dataset = dataset.compose(split_data)
-
         # Filter/clean the dataset
         SUPPRESS_KP_CONF_THRESH = cfg.DATASETS.get('SUPPRESS_KP_CONF_THRESH', 0.0)
         SUPPRESS_BETAS_THRESH = cfg.DATASETS.get('SUPPRESS_BETAS_THRESH', 0.0)
@@ -377,8 +428,9 @@ class ImageDataset(Dataset):
         image = item['jpg']
         data = item['data.pyd']
         mask = item['mask']
-
         keypoints_2d = data['keypoints_2d']
+        keypoints_2d_right_hand = data['keypoints_2d_right_hand']
+        keypoints_2d_left_hand = data['keypoints_2d_left_hand']
         keypoints_3d = data['keypoints_3d']
         center = data['center']
         scale = data['scale']
@@ -386,6 +438,10 @@ class ImageDataset(Dataset):
         betas = data['betas']
         has_body_pose = data['has_body_pose']
         has_betas = data['has_betas']
+        right_hand_pose = data['right_hand_pose']
+        left_hand_pose = data['left_hand_pose']
+        has_right_hand_pose = data['has_right_hand_pose']
+        has_left_hand_pose = data['has_left_hand_pose']
         # image_file = data['image_file']
 
         # Process data
@@ -395,31 +451,52 @@ class ImageDataset(Dataset):
         bbox_size = expand_to_aspect_ratio(scale*200, target_aspect_ratio=BBOX_SHAPE).max()
         if bbox_size < 1:
             breakpoint()
+        
+        # smpl_params = {'global_orient': body_pose[:3],
+        #             'body_pose': body_pose[3:],
+        #             'betas': betas
+        #             }
 
+        # has_smpl_params = {'global_orient': has_body_pose,
+        #                 'body_pose': has_body_pose,
+        #                 'betas': has_betas
+        #                 }
 
-        smpl_params = {'global_orient': body_pose[:3],
-                    'body_pose': body_pose[3:],
-                    'betas': betas
-                    }
+        # smpl_params_is_axis_angle = {'global_orient': True,
+        #                             'body_pose': True,
+        #                             'betas': False
+        #                             }
 
-        has_smpl_params = {'global_orient': has_body_pose,
-                        'body_pose': has_body_pose,
-                        'betas': has_betas
-                        }
+        smplh_params = {'global_orient': body_pose[:3],
+                       'body_pose': body_pose[3:],
+                       'right_hand_pose': right_hand_pose,
+                       'left_hand_pose': left_hand_pose,
+                       'betas': betas
+                      }
 
-        smpl_params_is_axis_angle = {'global_orient': True,
-                                    'body_pose': True,
-                                    'betas': False
-                                    }
+        has_smplh_params = {'global_orient': has_body_pose,
+                           'body_pose': has_body_pose,
+                           'right_hand_pose': has_right_hand_pose,
+                           'left_hand_pose': has_left_hand_pose,                           
+                           'betas': has_betas
+                           }
+
+        smplh_params_is_axis_angle = {'global_orient': True,
+                                     'body_pose': True,
+                                     'right_hand_pose': True,
+                                     'left_hand_pose': True,
+                                     'betas': False
+                                    }                                     
 
         augm_config = copy.deepcopy(augm_config)
         # Crop image and (possibly) perform data augmentation
         img_rgba = np.concatenate([image, mask.astype(np.uint8)[:,:,None]*255], axis=2)
-        img_patch_rgba, keypoints_2d, keypoints_3d, smpl_params, has_smpl_params, img_size, trans = get_example(img_rgba,
+        img_patch_rgba, keypoints_2d, keypoints_2d_right_hand, keypoints_2d_left_hand, keypoints_3d, smplh_params, has_smplh_params, img_size, trans = get_example(img_rgba,
                                                                                                     center_x, center_y,
                                                                                                     bbox_size, bbox_size,
-                                                                                                    keypoints_2d, keypoints_3d,
-                                                                                                    smpl_params, has_smpl_params,
+                                                                                                    keypoints_2d, keypoints_2d_right_hand, 
+                                                                                                    keypoints_2d_left_hand, keypoints_3d,
+                                                                                                    smplh_params, has_smplh_params,
                                                                                                     FLIP_KEYPOINT_PERMUTATION,
                                                                                                     IMG_SIZE, IMG_SIZE,
                                                                                                     MEAN, STD, train, augm_config,
@@ -439,14 +516,19 @@ class ImageDataset(Dataset):
         # item['img_og'] = image
         # item['mask_og'] = mask
         item['keypoints_2d'] = keypoints_2d.astype(np.float32)
+        item['keypoints_2d_right_hand'] = keypoints_2d_right_hand.astype(np.float32)
+        item['keypoints_2d_left_hand'] = keypoints_2d_left_hand.astype(np.float32)
         item['keypoints_3d'] = keypoints_3d.astype(np.float32)
         item['orig_keypoints_2d'] = orig_keypoints_2d
         item['box_center'] = center.copy()
         item['box_size'] = bbox_size
         item['img_size'] = 1.0 * img_size[::-1].copy()
-        item['smpl_params'] = smpl_params
-        item['has_smpl_params'] = has_smpl_params
-        item['smpl_params_is_axis_angle'] = smpl_params_is_axis_angle
+        # item['smpl_params'] = smpl_params
+        # item['has_smpl_params'] = has_smpl_params
+        # item['smpl_params_is_axis_angle'] = smpl_params_is_axis_angle
+        item['smplh_params'] = smplh_params
+        item['has_smplh_params'] = has_smplh_params
+        item['smplh_params_is_axis_angle'] = smplh_params_is_axis_angle          
         item['_scale'] = scale
         item['_trans'] = trans
         item['imgname'] = key
