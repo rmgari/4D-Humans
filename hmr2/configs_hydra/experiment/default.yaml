@@ -1,0 +1,46 @@
+# @package _global_
+
+# SMPL:
+#   DATA_DIR: ${oc.env:HOME}/.cache/4DHumans/data/
+#   MODEL_PATH: ${SMPL.DATA_DIR}/smpl
+#   GENDER: neutral
+#   NUM_BODY_JOINTS: 23
+#   JOINT_REGRESSOR_EXTRA: ${SMPL.DATA_DIR}/SMPL_to_J19.pkl
+#   MEAN_PARAMS: ${SMPL.DATA_DIR}/smpl_mean_params.npz
+
+SMPLH:
+  DATA_DIR: ${oc.env:HOME}/.cache/4DHumans/data/
+  # DATA_DIR: ${HOME}/.cache/4DHumans/data/
+  MODEL_PATH: ${SMPLH.DATA_DIR}/smplh/final_smplh_model/SMPLH_male.pkl
+  # no neutral gender available
+  GENDER: male
+  # GENDER: female  
+  NUM_BODY_JOINTS: 21
+  NUM_HAND_JOINTS: 15
+  JOINT_REGRESSOR_EXTRA: ${SMPLH.DATA_DIR}/SMPL_to_J19.pkl
+  MEAN_PARAMS: ${SMPLH.DATA_DIR}/smpl_mean_params.npz
+
+EXTRA:
+  FOCAL_LENGTH: 5000
+  NUM_LOG_IMAGES: 4
+  NUM_LOG_SAMPLES_PER_IMAGE: 8
+  PELVIS_IND: 39
+
+DATASETS:
+  BETAS_REG: True
+  CONFIG:
+    SCALE_FACTOR: 0.3
+    ROT_FACTOR: 30
+    TRANS_FACTOR: 0.02
+    COLOR_SCALE: 0.2
+    # ROT_AUG_RATE: 0.0
+    # TRANS_AUG_RATE: 0.0
+    # DO_FLIP: False
+    # FLIP_AUG_RATE: 0.0
+    # EXTREME_CROP_AUG_RATE: 0.0
+    ROT_AUG_RATE: 0.6
+    TRANS_AUG_RATE: 0.5
+    DO_FLIP: True
+    FLIP_AUG_RATE: 0.5
+    EXTREME_CROP_AUG_RATE: 0.10
+    EXTREME_CROP_AUG_LEVEL: 1
