@@ -28,7 +28,7 @@ def task_wrapper(task_func: Callable) -> Callable:
     - Logging the output dir
     """
 
-    def wrap(cfg: DictConfig):
+    def wrap(cfg: DictConfig, cfg_hands: DictConfig):
 
         # apply extra utilities
         extras(cfg)
@@ -36,7 +36,7 @@ def task_wrapper(task_func: Callable) -> Callable:
         # execute the task
         try:
             start_time = time.time()
-            ret = task_func(cfg=cfg)
+            ret = task_func(cfg=cfg, cfg_hands=cfg_hands)
         except Exception as ex:
             log.exception("")  # save exception to `.log` file
             raise ex

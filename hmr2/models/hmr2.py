@@ -18,7 +18,7 @@ log = get_pylogger(__name__)
 
 class HMR2(pl.LightningModule):
 
-    def __init__(self, cfg: CfgNode, init_renderer: bool = True):
+    def __init__(self, cfg: CfgNode, cfg_hands: CfgNode, init_renderer: bool = True):
         """
         Setup HMR2 model
         Args:
@@ -30,9 +30,11 @@ class HMR2(pl.LightningModule):
         self.save_hyperparameters(logger=False, ignore=['init_renderer'])
 
         self.cfg = cfg
+        self.cfg_hands = cfg_hands
         # Create backbone feature extractor
         # add hand backbones + configs (cfg_hands)
         self.backbone = create_backbone(cfg)
+        self.backbone_hands = create_backbone(cfg_hands)
 
         # hamer weights must be added -> cfg_hands.MODEL.BACKBONE.PRETRAINED_WEIGHTS
         pretrained_dict = torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')['state_dict']
@@ -45,6 +47,17 @@ class HMR2(pl.LightningModule):
         if cfg.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None):
             log.info(f'Loading backbone weights from {cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS}')
             self.backbone.load_state_dict(pretrained_dict)
+
+        pretrained_dict_hands = torch.load(cfg_hands.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')['state_dict']
+        pretrained_dict_hands = {k.replace("backbone.", ""): v for k, v in pretrained_dict_hands.items()}
+
+        for key in list(pretrained_dict_hands.keys()):
+            if 'keypoint_head' in key:
+                del pretrained_dict_hands[key]
+
+        if cfg_hands.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None):
+            log.info(f'Loading backbone weights from {cfg_hands.MODEL.BACKBONE.PRETRAINED_WEIGHTS}')
+            self.backbone_hands.load_state_dict(pretrained_dict_hands) 
 
         # Create SMPL head
         self.smpl_head = build_smpl_head(cfg)
@@ -111,19 +124,18 @@ class HMR2(pl.LightningModule):
         x = batch['img']
         batch_size = x.shape[0]
 
-        # y = batch left hand (to be flipped before passed in)
-        # z = batch right hand
+        y = batch['img_right']
+        # still needs to be flipped!
+        z = batch['img_left']
 
         # Compute conditioning features using the backbone
         # if using ViT backbone, we need to use a different aspect ratio
         conditioning_feats = self.backbone(x[:,:,:,32:-32])
-
-        # conditioning_feats_left_hand = self.backbone_hands(y[:,:,:,32:-32]) for hands as well
-        # conditioning_feats_right_hand = self.backbone_hands(z[:,:,:,32:-32]) for hands as well
-
+        conditioning_feats_right_hand = self.backbone_hands(y[:,:,:,32:-32])
+        conditioning_feats_left_hand = self.backbone_hands(z[:,:,:,32:-32])
+        
         # concatenate all the conditioning feats, and change the head to accept more tokens
-
-        pred_smpl_params, pred_cam, _ = self.smpl_head(conditioning_feats)
+        pred_smpl_params, pred_cam, _ = self.smpl_head(conditioning_feats, conditioning_feats_right_hand, conditioning_feats_left_hand)
 
 
         # Store useful regression outputs to the output dict

@@ -5,17 +5,17 @@ defaults:
 
 GENERAL:
   TOTAL_STEPS: 1_000_000
-  LOG_STEPS: 100
-  VAL_STEPS: 10000
-  CHECKPOINT_STEPS: 10000
+  LOG_STEPS: 1000
+  VAL_STEPS: 1000
+  CHECKPOINT_STEPS: 1000
   CHECKPOINT_SAVE_TOP_K: 1
-  NUM_WORKERS: 6
+  NUM_WORKERS: 4
   PREFETCH_FACTOR: 2
 
 TRAIN:
   LR: 1e-5
   WEIGHT_DECAY: 1e-4
-  BATCH_SIZE: 16
+  BATCH_SIZE: 8
   LOSS_REDUCTION: mean
   NUM_TRAIN_SAMPLES: 2
   NUM_TEST_SAMPLES: 64
@@ -28,11 +28,10 @@ MODEL:
   IMAGE_STD: [0.229, 0.224, 0.225]
   BACKBONE:
     TYPE: vit
-    # change to vitpose-b when dealing with vitpose-B
-    PRETRAINED_WEIGHTS: hmr2_training_data/vitpose_backbone.pth
-    # change to B when dealing with vitpose-B
+    # might have to download and adjust
+    PRETRAINED_WEIGHTS: hamer_training_data/vitpose_backbone.pth
     VARIANT: H
-  SMPL_HEAD:
+  MANO_HEAD:
     TYPE: transformer_decoder
     IN_CHANNELS: 2048
     TRANSFORMER_DECODER:
@@ -43,17 +42,12 @@ MODEL:
       dropout: 0.0
       emb_dropout: 0.0
       norm: layer
-      # change to 768 when dealing with vitpose-B
       context_dim: 1280 # from vitpose-H
 
 LOSS_WEIGHTS:
   KEYPOINTS_3D: 0.05
   KEYPOINTS_2D: 0.01
-  KEYPOINTS_2D_LEFT_HAND: 0.01
-  KEYPOINTS_2D_RIGHT_HAND: 0.01
   GLOBAL_ORIENT: 0.001
-  BODY_POSE: 0.001
-  RIGHT_HAND_POSE: 0.001
-  LEFT_HAND_POSE: 0.001
+  HAND_POSE: 0.001
   BETAS: 0.0005
   ADVERSARIAL: 0.0005

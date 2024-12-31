@@ -699,7 +699,6 @@ def get_example(img_path: str|np.ndarray, center_x: float, center_y: float,
     if width < 1 or height < 1:
         breakpoint()
 
-    # TODO: operate on hand bounding boxes....for now get it working without augmentations!
     if do_extreme_crop:
         if extreme_crop_lvl == 0:
             center_x1, center_y1, width1, height1 = extreme_cropping(center_x, center_y, width, height, keypoints_2d)

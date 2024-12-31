@@ -66,7 +66,7 @@ class SMPLTransformerDecoderHead(nn.Module):
         self.register_buffer('init_betas', init_betas)
         self.register_buffer('init_cam', init_cam)
 
-    def forward(self, x, **kwargs):
+    def forward(self, x, y, z, **kwargs):
 
         batch_size = x.shape[0]
         # vit pretrained backbone is channel-first. Change to token-first
@@ -74,6 +74,10 @@ class SMPLTransformerDecoderHead(nn.Module):
         # b (h w ) c -> 32 (196) 768 <- three of these
         # we will concatenate these three to get 32 (588) 768
         x = einops.rearrange(x, 'b c h w -> b (h w) c')
+        y = einops.rearrange(y, 'b c h w -> b (h w) c')
+        z = einops.rearrange(z, 'b c h w -> b (h w) c')
+
+        x = torch.cat([x, y, z], dim=1)
 
         init_body_pose = self.init_body_pose.expand(batch_size, -1)
         init_right_hand_pose = self.init_right_hand_pose.expand(batch_size, -1)

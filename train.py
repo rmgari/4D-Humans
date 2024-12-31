@@ -42,7 +42,7 @@ def save_configs(model_cfg: CfgNode, dataset_cfg: CfgNode, rootdir: str):
         f.write(dataset_cfg.dump())
 
 @task_wrapper
-def train(cfg: DictConfig) -> Tuple[dict, dict]:
+def train(cfg: DictConfig, cfg_hands: DictConfig) -> Tuple[dict, dict]:
 
     # Load dataset config
     dataset_cfg = dataset_config()
@@ -54,7 +54,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     datamodule = HMR2DataModule(cfg, dataset_cfg)
 
     # Setup model
-    model = HMR2(cfg)
+    model = HMR2(cfg, cfg_hands)
 
     # print("freezing backbone!")
     # for param in model.backbone.parameters():
@@ -110,8 +110,17 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
 @hydra.main(version_base="1.2", config_path=str(root/"hmr2/configs_hydra"), config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
+    import ipdb
+
+    # loading hands
+    config_files = Path(os.path.join(root, "hamer/configs_hydra")).rglob('*.yaml')
+    cfg_hands = OmegaConf.create()
+    for path in config_files:
+        cfg_hands = OmegaConf.merge(cfg_hands, OmegaConf.load(path))
+        
+
     # train the model
-    train(cfg)
+    train(cfg, cfg_hands)
 
 
 if __name__ == "__main__":

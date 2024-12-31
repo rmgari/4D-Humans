@@ -53,7 +53,6 @@ class ImageDataset(Dataset):
                  train: bool = True,
                  prune: Dict[str, Any] = {},
                  **kwargs):
-        print("IN CONSTRUCTOR!")
         """
         Dataset class used for loading images and corresponding annotations.
         Args:
@@ -153,7 +152,6 @@ class ImageDataset(Dataset):
         """
         Returns an example from the dataset.
         """
-        print("RUNNING!!!!")
         try:
             image_file_rel = self.imgname[idx].decode('utf-8')
         except AttributeError:
@@ -306,7 +304,6 @@ class ImageDataset(Dataset):
             bbox_size_min = item['data.pyd']['scale'].min().item() * 200.
             return bbox_size_min > thresh
 
-        # TODO
         def filter_no_poses(item):
             return (item['data.pyd']['has_body_pose'] > 0)
 
@@ -318,7 +315,6 @@ class ImageDataset(Dataset):
                     item['data.pyd']['has_betas'] = False
             return item
 
-        # TODO
         amass_poses_hist100_smooth = load_amass_hist_smooth()
         def supress_bad_poses(item):
             has_body_pose = item['data.pyd']['has_body_pose']
@@ -329,7 +325,6 @@ class ImageDataset(Dataset):
                     item['data.pyd']['has_body_pose'] = False
             return item
 
-        # TODO
         def poses_betas_simultaneous(item):
             # We either have both body_pose and betas, or neither
             has_betas = item['data.pyd']['has_betas']
@@ -517,8 +512,8 @@ class ImageDataset(Dataset):
 
         item['img'] = img_patch
         item['mask'] = mask_patch
-        item['img_right'] = img_patch_right
-        item['img_left'] = img_patch_left                
+        item['img_right'] = img_patch_right.astype(np.float32)
+        item['img_left'] = img_patch_left.astype(np.float32)       
         # item['img_og'] = image
         # item['mask_og'] = mask
         item['keypoints_2d'] = keypoints_2d.astype(np.float32)
